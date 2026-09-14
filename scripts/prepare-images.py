@@ -30,6 +30,8 @@ SOURCES = {
     "forestry-hero":       (f"{SRC_DL}/forestry-canopywalk.jpg", "center"),
     "mining-card":         (f"{SRC_SHOTS}/mining1.jpg", "center"),
     "mining-hero":         (f"{SRC_SHOTS}/mining2.jpg", "center"),
+    "adaptation-card":     (f"{SRC_DL}/nathan-cima-KmcWyQO4hgA-unsplash.jpg", "center"),
+    "adaptation-hero":     (f"{SRC_DL}/nathan-cima-KmcWyQO4hgA-unsplash.jpg", "center"),
 }
 
 # Forestry sources are 960x600; encoding above 1280 invents no detail.

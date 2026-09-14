@@ -36,6 +36,22 @@ export const SERVER_URL = (
 ).replace(/\/$/, '')
 export const SERVER_PROXY_BASE = '/api/portal/srv'
 
+/**
+ * Survey123, proxied so its portal calls can pick up the session token.
+ *
+ * The forms live on Esri's SaaS, not on GeoHub, so it is tempting to frame
+ * survey123.arcgis.com directly. That fails: the feature layer a form submits to
+ * is not public, and a cross-origin frame can carry no session, so ArcGIS
+ * Identity Manager prompts the user to sign in inside the frame. Proxying makes
+ * the frame same-origin, and the portal calls it makes come back through
+ * PROXY_BASE and collect the token there.
+ *
+ * Configurable only so a portal that embeds no forms can point it elsewhere;
+ * the default is the only host Survey123 serves shared forms from.
+ */
+export const FORMS_URL = (process.env.FORMS_URL || 'https://survey123.arcgis.com').replace(/\/$/, '')
+export const FORMS_PROXY_BASE = '/api/forms'
+
 /*
  * The path each upstream lives under, e.g. '/portal' and '/server'.
  *
@@ -321,6 +337,11 @@ function rewriteBody(text, req) {
     .replaceAll(SERVER_URL, absoluteServerProxy)
     .replaceAll(encodeURIComponent(SERVER_URL), encodeURIComponent(absoluteServerProxy))
 
+  // Survey123's payloads name their own host absolutely; left alone, the app
+  // would step outside the proxy and lose the same-origin frame.
+  const absoluteForms = origin ? `${origin}${FORMS_PROXY_BASE}` : FORMS_PROXY_BASE
+  out = out.replaceAll(FORMS_URL, absoluteForms)
+
   const portalHost = PORTAL_URL.replace(/^https?:\/\//, '')
   const serverHost = SERVER_URL.replace(/^https?:\/\//, '')
   const originHost = origin.replace(/^https?:\/\//, '')
@@ -364,8 +385,11 @@ function rewriteBody(text, req) {
   return out
 }
 
-async function proxyRequest(req, res, restPath, search, base = PORTAL_URL) {
-  const session = readSession(req)
+async function proxyRequest(req, res, restPath, search, base = PORTAL_URL, opts = {}) {
+  // Survey123 is not GeoHub, so the token means nothing to it and is withheld.
+  // The portal calls the form makes are separate requests that come back
+  // through PROXY_BASE, where the token IS attached.
+  const session = opts.noToken ? null : readSession(req)
 
   const target = new URL(restPath.replace(/^\//, ''), `${base}/`)
   // Never let a caller pin their own token; the session's token is authoritative.
@@ -501,6 +525,16 @@ export function createAccessMiddleware() {
         return sendJson(res, 200, { authenticated: false })
       }
 
+      if (pathname === FORMS_PROXY_BASE || pathname.startsWith(`${FORMS_PROXY_BASE}/`)) {
+        let rest = pathname
+        while (rest === FORMS_PROXY_BASE || rest.startsWith(`${FORMS_PROXY_BASE}/`)) {
+          rest = rest.slice(FORMS_PROXY_BASE.length)
+        }
+        return await proxyRequest(
+          req, res, (rest || '/').replace(/\/{2,}/g, '/'), url.search, FORMS_URL, { noToken: true },
+        )
+      }
+
       if (pathname === SERVER_PROXY_BASE || pathname.startsWith(`${SERVER_PROXY_BASE}/`)) {
         let rest = pathname
         while (rest === SERVER_PROXY_BASE || rest.startsWith(`${SERVER_PROXY_BASE}/`)) {
@@ -541,11 +575,39 @@ export function createAccessMiddleware() {
        * only ever forwards to the two configured upstreams.
        */
       const referer = req.headers.referer || ''
-      const fromFrame = referer.includes(PROXY_BASE) || referer.includes(SERVER_PROXY_BASE)
+
+      /*
+       * Which frame a root-relative request came from, decided on the referer's
+       * PATH rather than the whole URL.
+       *
+       * A form is framed at
+       *   /api/forms/share/<id>?portalUrl=<origin>/api/portal/gh
+       * so a substring test against the full referer finds PROXY_BASE in the
+       * QUERY and reads the form frame as a portal frame. The form's own calls
+       * — POST /api/updateWebform among them — then match no rule, fall through
+       * to the static handler, and come back as index.html, which the app
+       * reports as "Unexpected token '<'". Comparing paths keeps them apart.
+       */
+      let refPath = ''
+      try {
+        refPath = referer ? new URL(referer).pathname : ''
+      } catch {
+        refPath = ''
+      }
+      const isUnder = (path, prefix) =>
+        Boolean(prefix) && (path === prefix || path.startsWith(`${prefix}/`))
+
+      const fromFrame = isUnder(refPath, PROXY_BASE) || isUnder(refPath, SERVER_PROXY_BASE)
+      const fromFormFrame = isUnder(refPath, FORMS_PROXY_BASE)
+
+      // Checked first: a form frame is never also a portal frame, and the
+      // portal rules below would happily claim /api/... and /assets/... .
+      if (fromFormFrame) {
+        return await proxyRequest(req, res, pathname, url.search, FORMS_URL, { noToken: true })
+      }
 
       if (fromFrame) {
-        const under = (prefix) =>
-          prefix && (pathname === prefix || pathname.startsWith(`${prefix}/`))
+        const under = (prefix) => isUnder(pathname, prefix)
 
         // Longest/most specific first: '/server' and '/portal' are distinct, but
         // the ArcGIS Server must never be answered from the portal base.
@@ -573,7 +635,7 @@ export function createAccessMiddleware() {
 
     if (DEBUG) {
       const ref = req.headers.referer || ''
-      if (ref.includes(PROXY_BASE) || ref.includes(SERVER_PROXY_BASE)) {
+      if (ref.includes(PROXY_BASE) || ref.includes(SERVER_PROXY_BASE) || ref.includes(FORMS_PROXY_BASE)) {
         dbg(`UNPROXIED ${req.method} ${pathname} — from inside the frame, but no proxy`,
             'rule matched, so the static handler will answer it with index.html')
       }

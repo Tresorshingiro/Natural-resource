@@ -1,4 +1,4 @@
-# Rwanda Space Agency — Natural Resource Mapping Portal
+# Rwanda Space Agency — Environment Mapping
 
 A React launcher portal for Rwanda's national geoportal. It presents six
 environmental and natural resource modules (climate, water, parks,

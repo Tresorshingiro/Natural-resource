@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest'
 import WorkspaceSidebar from './WorkspaceSidebar'
 import { AuthProvider } from '../auth/AuthContext'
 import { modules, portal } from '../data/config'
+import { brand } from '../lib/brand'
+import { MOE_PORTAL_ORIGIN } from '../lib/portal'
 
 // The sidebar now carries the account block in its foot, so it needs the auth
 // provider standing behind it. The provider's session probe fails harmlessly
@@ -20,10 +22,22 @@ const renderAt = (path = '/') =>
 // Each module is a labelled <section>, so it is addressable as a region. Queries
 // are scoped through it because a label can legitimately repeat across levels —
 // the water module and its first solution are both "Water Resources Mapping".
-// For the same reason rows are found by their link role, not by their text: in
-// that portal the group title and the row carry identical words.
 const group = (mod) => within(screen.getByRole('region', { name: mod.name }))
-const row = (mod, solution) => group(mod).getByRole('link', { name: solution.name })
+
+/*
+ * Rows are found by href, not by label.
+ *
+ * A label can legitimately repeat: a group and its first dashboard can carry
+ * the same words. The href is the one thing unique to a row, and it is also
+ * what the row is FOR.
+ */
+const row = (mod, solution) =>
+  group(mod).getByRole('link', {
+    name: (name, el) => el.getAttribute('href') === `/module/${mod.id}/app/${solution.id}`,
+  })
+
+// A form is another way into a dashboard, not another solution.
+const dashboards = (mod) => mod.solutions.filter((s) => !s.isForm)
 
 // Mirrors the component: a portal whose only module is the portal itself shows
 // no module header, because the brand above it already carries that name.
@@ -36,36 +50,27 @@ describe('WorkspaceSidebar', () => {
       expect(mod.solutions.length).toBeGreaterThan(0)
       for (const solution of mod.solutions) {
         expect(solution.embedUrl).toBeTruthy()
-        // Same-origin only — never a Portal URL, which would be frame-refused.
-        expect(solution.embedUrl.startsWith('/')).toBe(true)
+        // Same-origin — never a GeoHub Portal URL, which would be frame-refused.
+        // MoE's Enterprise is the one host framed directly.
+        const direct = solution.embedUrl.startsWith(`${MOE_PORTAL_ORIGIN}/`)
+        expect(solution.embedUrl.startsWith('/') || direct).toBe(true)
       }
     }
   })
 
-  it('heads the list for what it lists and names each category by its full catalog name', () => {
+  it('carries the brand badge and portal name, and names each module region in full', () => {
     renderAt()
-    const heading = soleModule ? 'Solutions' : 'Modules'
-    expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Modules' })
+    expect(nav.querySelector('.sidebar__badge svg')).toBeTruthy()
+    expect(nav.querySelector('.sidebar__name')).toHaveTextContent(portal.name)
     for (const mod of modules) {
       expect(screen.getByRole('region', { name: mod.name })).toBeInTheDocument()
     }
   })
 
-  it('counts solutions with the singular/plural rule, wherever a module is headed', () => {
+  it('shows no solution counts, since every row is already on screen', () => {
     renderAt()
-    for (const mod of modules) {
-      const n = mod.solutions.length
-      const label = `${n} ${n === 1 ? 'solution' : 'solutions'}`
-      if (soleModule) {
-        // The header is one block carrying both the title and the count, so the
-        // count's absence is the header's absence. Asserting on the title
-        // instead would be ambiguous: in Water Resources the module and its
-        // first application are the same words, and the row still renders them.
-        expect(group(mod).queryByText(label)).not.toBeInTheDocument()
-      } else {
-        expect(group(mod).getByText(label)).toBeInTheDocument()
-      }
-    }
+    expect(screen.queryByText(/^\d+ solutions?$/)).not.toBeInTheDocument()
   })
 
   it('shows every solution without any disclosure to open', () => {
@@ -106,16 +111,17 @@ describe('WorkspaceSidebar', () => {
     }
   })
 
-  it('carries each module accent down to its group', () => {
+  it('colours the whole sidebar with the same brand as the login', () => {
     renderAt()
-    for (const mod of modules) {
-      const region = screen.getByRole('region', { name: mod.name })
-      expect(region).toHaveStyle({
-        '--accent': mod.accent,
-        '--accent-text': mod.accentText,
-        '--accent-dark': mod.accentDark,
-      })
-    }
+    expect(screen.getByRole('navigation', { name: 'Modules' })).toHaveStyle({
+      '--brand-accent': brand.accent,
+      '--brand-tint': brand.tint,
+    })
+  })
+
+  it('ends with a Logout button', () => {
+    renderAt()
+    expect(screen.getByRole('button', { name: 'Logout' })).toBeInTheDocument()
   })
 
   it('takes both accents straight from the guarded catalog', async () => {
@@ -133,6 +139,93 @@ describe('WorkspaceSidebar', () => {
       // basalt this was a lifted derivative instead, and the guard only ever
       // applied indirectly.
       expect(mod.accentDark).toBe(source.accentText)
+    }
+  })
+})
+
+/*
+ * Grouped solutions.
+ *
+ * A group is a LABEL, not a destination: the Experience Builder app it is named
+ * after is no longer embedded anywhere, so the head must not be a link, and it
+ * must not be a disclosure either — this sidebar has never hidden anything
+ * behind one and every dashboard is always on screen.
+ */
+describe('WorkspaceSidebar grouping', () => {
+  const named = modules.flatMap((mod) => mod.groups.filter((g) => g.name).map((g) => [mod, g]))
+
+  it('has a group to test', () => {
+    expect(named.length).toBeGreaterThan(0)
+  })
+
+  it('shows each group name, as text rather than something to click', () => {
+    renderAt()
+    for (const [mod, g] of named) {
+      const scope = group(mod)
+      expect(scope.getByText(g.name)).toBeInTheDocument()
+      expect(scope.queryByRole('link', { name: g.name })).not.toBeInTheDocument()
+      expect(scope.queryByRole('button', { name: g.name })).not.toBeInTheDocument()
+    }
+  })
+
+  it('links every dashboard in a group to its own route', () => {
+    renderAt()
+    for (const [mod, g] of named) {
+      for (const solution of g.solutions) {
+        expect(row(mod, solution)).toHaveAttribute(
+          'href',
+          `/module/${mod.id}/app/${solution.id}`,
+        )
+      }
+    }
+  })
+
+  it('marks only the open dashboard active, never its group', () => {
+    const [mod, g] = named[0]
+    const open = g.solutions[1]
+    renderAt(`/module/${mod.id}/app/${open.id}`)
+    expect(row(mod, open)).toHaveClass('is-active')
+    for (const other of g.solutions.filter((s) => s.id !== open.id)) {
+      expect(row(mod, other)).not.toHaveClass('is-active')
+    }
+  })
+})
+
+/*
+ * A form is nested inside its dashboard's <li>, not listed beside it. That
+ * containment is what ties a form to its dashboard, whatever the form's name.
+ */
+describe('WorkspaceSidebar forms', () => {
+  const paired = modules.flatMap((mod) =>
+    mod.groups.flatMap((g) => g.solutions.filter((s) => s.form).map((s) => [mod, s])),
+  )
+
+  it('has a form to test', () => {
+    expect(paired.length).toBeGreaterThan(0)
+  })
+
+  it('nests each form inside the row of the dashboard it feeds', () => {
+    renderAt()
+    for (const [mod, dashboard] of paired) {
+      const parentRow = row(mod, dashboard).closest('li')
+      const formLink = within(parentRow).getByRole('link', {
+        name: (name, el) =>
+          el.getAttribute('href') === `/module/${mod.id}/app/${dashboard.form.id}`,
+      })
+      expect(formLink).toHaveTextContent(dashboard.form.name)
+    }
+  })
+
+  it('opens a form without marking its dashboard active', () => {
+    const [mod, dashboard] = paired[0]
+    renderAt(`/module/${mod.id}/app/${dashboard.form.id}`)
+    expect(row(mod, dashboard.form)).toHaveClass('is-active')
+    expect(row(mod, dashboard)).not.toHaveClass('is-active')
+  })
+
+  it('frames every form through this origin, never survey123.arcgis.com', () => {
+    for (const [, dashboard] of paired) {
+      expect(dashboard.form.embedUrl.startsWith('/api/forms/')).toBe(true)
     }
   })
 })

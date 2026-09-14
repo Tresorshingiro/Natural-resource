@@ -10,6 +10,23 @@ export const manifest = {
   ],
   "climate-hero": [
     640,
+    1280
+  ],
+  "conservation-card": [
+    640,
+    1280
+  ],
+  "conservation-hero": [
+    640,
+    1280,
+    1920
+  ],
+  "adaptation-card": [
+    640,
+    1280
+  ],
+  "adaptation-hero": [
+    640,
     1280,
     1920
   ]
