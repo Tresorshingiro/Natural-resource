@@ -42,7 +42,8 @@ export default function WorkspaceSidebar() {
   /*
    * A portal that IS its module gets no module heading: the brand above already
    * names it. Its named groups take the heading style instead. With several
-   * modules, each module is the heading and its groups sit under it as labels.
+   * modules, each module is the heading and its groups sit under it as labels —
+   * except an `untitled` module, whose groups are headed like a sole module's.
    */
   const soleModule = modules.length === 1
 
@@ -104,48 +105,55 @@ export default function WorkspaceSidebar() {
       </div>
 
       <div className="sidebar__scroll">
-        {modules.map((mod) => (
-          <section key={mod.id} className="navsection" aria-label={mod.name}>
-            {!soleModule && (
-              <div className="navhead">
-                <span className="navhead__tile" aria-hidden="true">
-                  <IconMark name={mod.icon} size={18} />
-                </span>
-                <span className="navhead__title">{mod.name}</span>
-              </div>
-            )}
-
-            {groupsOf(mod, soleModule).map((group, i) => {
-              const headingId = group.name ? `${mod.id}-group-${i}` : undefined
-              return (
-                <div key={group.name || `solo-${i}`} className="navgroup">
-                  {/* A group is a label, never a link or a disclosure. */}
-                  {group.name &&
-                    (soleModule ? (
-                      <div className="navhead" id={headingId}>
-                        <span className="navhead__tile" aria-hidden="true">
-                          <IconMark name={group.icon} size={18} />
-                        </span>
-                        <span className="navhead__title">{group.name}</span>
-                      </div>
-                    ) : (
-                      <div className="navsub" id={headingId}>
-                        <IconMark name={group.icon} size={15} />
-                        <span>{group.name}</span>
-                      </div>
-                    ))}
-
-                  <ul
-                    className={`modlist ${group.name || !soleModule ? 'modlist--nested' : ''}`}
-                    aria-labelledby={headingId}
-                  >
-                    {group.solutions.map((solution) => renderRow(mod, solution))}
-                  </ul>
+        {modules.map((mod) => {
+          const titled = !soleModule && !mod.untitled
+          return (
+            <section
+              key={mod.id}
+              className={`navsection ${titled ? '' : 'navsection--untitled'}`}
+              aria-label={mod.name}
+            >
+              {titled && (
+                <div className="navhead">
+                  <span className="navhead__tile" aria-hidden="true">
+                    <IconMark name={mod.icon} size={18} />
+                  </span>
+                  <span className="navhead__title">{mod.name}</span>
                 </div>
-              )
-            })}
-          </section>
-        ))}
+              )}
+
+              {groupsOf(mod, soleModule).map((group, i) => {
+                const headingId = group.name ? `${mod.id}-group-${i}` : undefined
+                return (
+                  <div key={group.name || `solo-${i}`} className="navgroup">
+                    {/* A group is a label, never a link or a disclosure. */}
+                    {group.name &&
+                      (!titled ? (
+                        <div className="navhead" id={headingId}>
+                          <span className="navhead__tile" aria-hidden="true">
+                            <IconMark name={group.icon} size={18} />
+                          </span>
+                          <span className="navhead__title">{group.name}</span>
+                        </div>
+                      ) : (
+                        <div className="navsub" id={headingId}>
+                          <IconMark name={group.icon} size={15} />
+                          <span>{group.name}</span>
+                        </div>
+                      ))}
+
+                    <ul
+                      className={`modlist ${group.name || !soleModule ? 'modlist--nested' : ''}`}
+                      aria-labelledby={headingId}
+                    >
+                      {group.solutions.map((solution) => renderRow(mod, solution))}
+                    </ul>
+                  </div>
+                )
+              })}
+            </section>
+          )
+        })}
       </div>
 
       <SidebarAccount />

@@ -453,6 +453,8 @@ a {
   flex-direction: column;
   gap: 14px;
 }
+/* Its groups are the headings here, so they sit as far apart as modules do. */
+.navsection--untitled { gap: 22px; }
 
 /* A heading: its own white tile, then the name in bold. */
 .navhead {

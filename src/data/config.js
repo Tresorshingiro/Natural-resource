@@ -84,6 +84,16 @@ const GROUP_ICONS = {
 }
 
 /*
+ * Modules the sidebar draws without their own title.
+ *
+ * Conservation's two groups already say what they hold, so its title was a
+ * third heading level over them. Its groups take the heading style instead and
+ * sit level with the other modules. Presentation only: the module, its id and
+ * its routes are unchanged.
+ */
+const UNTITLED_MODULES = new Set(["conservation"])
+
+/*
  * Module accent for the light chrome.
  *
  * The catalog's `accentText` is the value drawn for this exact ground and
@@ -163,6 +173,7 @@ const catalog = catalogSource.map((mod) => {
     name: mod.name,
     description: mod.description,
     icon: MODULE_ICONS[mod.id] || 'map',
+    untitled: UNTITLED_MODULES.has(mod.id),
     accent: mod.accent,
     accentText: mod.accentText,
     // Named for its role in the CSS (the module and group icons, and the open

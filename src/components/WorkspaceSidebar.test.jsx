@@ -180,6 +180,24 @@ describe('WorkspaceSidebar grouping', () => {
     }
   })
 
+  it('drops the title of an untitled module and heads its groups in its place', () => {
+    const untitled = modules.filter((mod) => mod.untitled)
+    expect(untitled.map((mod) => mod.id)).toEqual(['conservation'])
+    renderAt()
+    for (const mod of untitled) {
+      const region = screen.getByRole('region', { name: mod.name })
+      expect(within(region).queryByText(mod.name)).not.toBeInTheDocument()
+      for (const g of mod.groups.filter((g) => g.name)) {
+        expect(within(region).getByText(g.name).closest('.navhead')).toBeTruthy()
+      }
+    }
+    // Every other module keeps its own title.
+    for (const mod of modules.filter((mod) => !mod.untitled)) {
+      const region = screen.getByRole('region', { name: mod.name })
+      expect(within(region).getByText(mod.name).closest('.navhead')).toBeTruthy()
+    }
+  })
+
   it('marks only the open dashboard active, never its group', () => {
     const [mod, g] = named[0]
     const open = g.solutions[1]
